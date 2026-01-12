@@ -1,0 +1,12 @@
+repositories:
+  - name: jkroepke
+    url: https://jkroepke.github.io/helm-charts/
+
+releases:
+  - name: amazon-eks-pod-identity-webhook
+    namespace: {{ .Values.amazonEksPodIdentityWebhook.namespace }}
+    createNamespace: false
+    chart: jkroepke/amazon-eks-pod-identity-webhook
+    version: {{ .Values.amazonEksPodIdentityWebhook.version }}
+    values:
+{{ toYaml .Values.amazonEksPodIdentityWebhook.values | nindent 6 }}

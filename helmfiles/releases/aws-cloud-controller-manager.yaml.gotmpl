@@ -1,0 +1,11 @@
+repositories:
+  - name: aws-cloud-controller-manager
+    url: https://kubernetes.github.io/cloud-provider-aws
+
+releases:
+  - name: aws-cloud-controller-manager
+    namespace: {{ .Values.awsCloudControllerManager.namespace }}
+    chart: aws-cloud-controller-manager/aws-cloud-controller-manager
+    version: {{ .Values.awsCloudControllerManager.version }}
+    values:
+{{ toYaml .Values.awsCloudControllerManager.values | nindent 6 }}

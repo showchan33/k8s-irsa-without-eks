@@ -1,0 +1,8 @@
+releases:
+  - name: eg
+    namespace: {{ .Values.envoyGateway.namespace }}
+    createNamespace: true
+    chart: oci://docker.io/envoyproxy/gateway-helm
+    version: {{ .Values.envoyGateway.version }}
+    values:
+{{ toYaml .Values.envoyGateway.values | nindent 6 }}

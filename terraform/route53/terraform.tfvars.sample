@@ -1,0 +1,61 @@
+var_provider = {
+  region = "ap-northeast-1"
+}
+
+route53domains_domain = {
+  admin_privacy = true
+  auto_renew    = false
+  billing_privacy    = true
+  domain_name        = "example.com"
+  name_server        = null
+  registrant_privacy = true
+  tech_privacy       = true
+  transfer_lock      = false
+  admin_contact = {
+    address_line_1 = "1-2-3 Example"
+    city           = "Tokyo"
+    contact_type   = "PERSON"
+    country_code   = "JP"
+    email          = "admin@example.com"
+    first_name     = "Taro"
+    last_name      = "Yamada"
+    phone_number   = "+81.9012345678"
+    state          = "JP-13"
+    zip_code       = "1000001"
+  }
+  registrant_contact = {
+    address_line_1 = "1-2-3 Example"
+    city           = "Tokyo"
+    contact_type   = "PERSON"
+    country_code   = "JP"
+    email          = "registrant@example.com"
+    first_name     = "Taro"
+    last_name      = "Yamada"
+    phone_number   = "+81.9012345678"
+    state          = "JP-13"
+    zip_code       = "1000001"
+  }
+  tech_contact = {
+    address_line_1 = "1-2-3 Example"
+    city           = "Tokyo"
+    contact_type   = "PERSON"
+    country_code   = "JP"
+    email          = "tech@example.com"
+    first_name     = "Taro"
+    last_name      = "Yamada"
+    phone_number   = "+81.9012345678"
+    state          = "JP-13"
+    zip_code       = "1000001"
+  }
+}
+
+iam_user = {
+  name = "cert-manager-route53-access"
+}
+
+iam_policy = {
+  name = "route53-access"
+}
+
+route53_a_record_name = "app.example.com"
+route53_a_record_ip   = "12.34.56.78"

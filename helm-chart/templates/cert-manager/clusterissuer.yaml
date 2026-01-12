@@ -1,0 +1,22 @@
+{{- $certManager := .Values.certManager -}}
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: {{ $certManager.clusterIssuer.name }}
+spec:
+  acme:
+    server: {{ $certManager.clusterIssuer.acme.server | quote }}
+    email: {{ $certManager.clusterIssuer.acme.email | quote }}
+    privateKeySecretRef:
+      name: {{ $certManager.clusterIssuer.acme.privateKeySecretName }}
+    solvers:
+      - dns01:
+          route53:
+            region: {{ $certManager.clusterIssuer.route53.region | quote }}
+            hostedZoneID: {{ $certManager.clusterIssuer.route53.hostedZoneId | quote }}
+            accessKeyIDSecretRef:
+              name: {{ $certManager.clusterIssuer.route53.secretName }}
+              key: access-key-id
+            secretAccessKeySecretRef:
+              name: {{ $certManager.clusterIssuer.route53.secretName }}
+              key: secret-access-key

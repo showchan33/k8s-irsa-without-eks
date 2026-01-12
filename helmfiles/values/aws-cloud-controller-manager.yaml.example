@@ -1,0 +1,6 @@
+# Values for aws-cloud-controller-manager Helm chart.
+hostNetworking: true
+args:
+  - --v=2
+  - --cloud-provider=aws
+  - --configure-cloud-routes=false

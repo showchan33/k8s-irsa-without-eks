@@ -1,0 +1,5 @@
+envoyGateway:
+  version: 1.6.2
+  namespace: envoy-gateway-system
+  values:
+    - ../values/envoy-gateway.yaml

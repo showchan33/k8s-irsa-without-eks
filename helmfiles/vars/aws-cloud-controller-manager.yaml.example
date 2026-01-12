@@ -1,0 +1,5 @@
+awsCloudControllerManager:
+  version: 0.0.10
+  namespace: kube-system
+  values:
+    - ../values/aws-cloud-controller-manager.yaml

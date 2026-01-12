@@ -1,0 +1,24 @@
+gateway:
+  port: 443
+  hostname: ${route53_a_record_name}
+
+certManager:
+  namespace: cert-manager
+  clusterIssuer:
+    name: letsencrypt
+    acme:
+      email: "${email}"
+      server: https://acme-v02.api.letsencrypt.org/directory
+      privateKeySecretName: letsencrypt-key
+    route53:
+      region: ${region}
+      hostedZoneId: "${hosted_zone_id}"
+      accessKeyId: "${access_key_id}"
+      secretAccessKey: "${secret_access_key}"
+      secretName: route53-credentials
+  certificate:
+    name: cert
+    namespace: default
+    secretName: cert-tls
+    dnsNames:
+      - ${route53_a_record_name}

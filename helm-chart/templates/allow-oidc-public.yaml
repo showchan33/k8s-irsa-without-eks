@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: allow-oidc-discovery-and-jwks
+rules:
+  - nonResourceURLs:
+      - "/.well-known/openid-configuration"
+      - "/openid/v1/jwks"
+    verbs:
+      - "get"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: allow-oidc-discovery-and-jwks-to-anonymous
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: allow-oidc-discovery-and-jwks
+subjects:
+  # AWS STS 側は基本「認証なし」で取りに来る想定なので unauthenticated に付与する
+  - kind: Group
+    name: system:unauthenticated
+    apiGroup: rbac.authorization.k8s.io
+

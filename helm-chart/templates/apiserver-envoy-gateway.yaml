@@ -1,0 +1,55 @@
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: apiserver-gateway
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+  - name: https
+    protocol: HTTPS
+    port: {{ .Values.gateway.port }}
+    hostname: {{ .Values.gateway.hostname | quote }}
+    tls:
+      mode: Terminate
+      certificateRefs:
+      - kind: Secret
+        name: cert-tls
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: apiserver-route
+spec:
+  parentRefs:
+  - name: apiserver-gateway
+  hostnames:
+  - {{ .Values.gateway.hostname | quote }}
+  rules:
+  - matches:
+    - path:
+        type: Exact
+        value: /.well-known/openid-configuration
+    - path:
+        type: Exact
+        value: /openid/v1/jwks
+    backendRefs:
+    - name: kubernetes
+      namespace: default
+      port: {{ .Values.gateway.port }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: apiserver-backend-tls
+spec:
+  targetRefs:
+  - group: ""
+    kind: Service
+    name: kubernetes
+  validation:
+    hostname: kubernetes.default.svc
+    caCertificateRefs:
+    - group: ""
+      kind: ConfigMap
+      name: kube-root-ca.crt

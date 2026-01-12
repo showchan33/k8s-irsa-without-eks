@@ -1,0 +1,5 @@
+amazonEksPodIdentityWebhook:
+  version: 2.6.0
+  namespace: kube-system
+  values:
+    - ../values/amazon-eks-pod-identity-webhook.yaml

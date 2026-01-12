@@ -1,0 +1,38 @@
+var_provider = {
+  region = "ap-northeast-1"
+}
+
+oidc_provider = {
+  url            = "https://app.example.com"
+  client_id_list = ["sts.amazonaws.com"]
+}
+
+oidc_assume_roles = {
+  my_app = {
+    namespace       = "default"
+    service_account = "my-app"
+    audience        = "sts.amazonaws.com"
+    managed_policy_arns = [
+      "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
+    ]
+  }
+
+  metrics_reader = {
+    namespace       = "monitoring"
+    service_account = "metrics-reader"
+    audience        = "sts.amazonaws.com"
+    # Optional: custom inline policy JSON. If unset, no inline policy is created.
+    inline_policy_json = <<-EOT
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": ["cloudwatch:GetMetricData"],
+            "Resource": "*"
+          }
+        ]
+      }
+    EOT
+  }
+}

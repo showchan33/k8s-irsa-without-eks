@@ -1,0 +1,25 @@
+# Base values for this chart.
+# Route53 credentials and DNS name should be overridden by the generated file:
+# helm-chart/values.generated.yaml
+gateway:
+  port: 443
+  hostname: k8s-oidc-discovery.example.com
+
+certManager:
+  namespace: cert-manager
+  clusterIssuer:
+    name: letsencrypt
+    acme:
+      email: ""
+      server: https://acme-v02.api.letsencrypt.org/directory
+      privateKeySecretName: letsencrypt-key
+    route53:
+      region: ap-northeast-1
+      hostedZoneId: ""
+      accessKeyId: ""
+      secretAccessKey: ""
+      secretName: route53-credentials
+  certificate:
+    name: cert
+    secretName: cert-tls
+    dnsNames: []

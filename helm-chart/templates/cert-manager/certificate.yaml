@@ -1,0 +1,12 @@
+{{- $certManager := .Values.certManager -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $certManager.certificate.name }}
+spec:
+  secretName: {{ $certManager.certificate.secretName }}
+  issuerRef:
+    name: {{ $certManager.clusterIssuer.name }}
+    kind: ClusterIssuer
+  dnsNames:
+{{ toYaml $certManager.certificate.dnsNames | nindent 4 }}

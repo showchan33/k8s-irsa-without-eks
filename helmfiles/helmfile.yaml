@@ -1,0 +1,13 @@
+helmfiles:
+  - path: releases/cert-manager.yaml.gotmpl
+    values:
+      - vars/cert-manager.yaml
+  - path: releases/envoy-gateway.yaml.gotmpl
+    values:
+      - vars/envoy-gateway.yaml
+  - path: releases/aws-cloud-controller-manager.yaml.gotmpl
+    values:
+      - vars/aws-cloud-controller-manager.yaml
+  - path: releases/amazon-eks-pod-identity-webhook.yaml.gotmpl
+    values:
+      - vars/amazon-eks-pod-identity-webhook.yaml

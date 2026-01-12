@@ -1,0 +1,8 @@
+# Copy to values/envoy-gateway.yaml and edit for per-user overrides.
+config:
+  envoyGateway:
+    provider:
+      type: Kubernetes
+      kubernetes:
+        deploy:
+          type: GatewayNamespace

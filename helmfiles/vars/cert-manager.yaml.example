@@ -1,0 +1,6 @@
+# Copy to vars/cert-manager.yaml and edit for per-user overrides.
+certManager:
+  version: v1.19.2
+  namespace: cert-manager
+  values:
+    - ../values/cert-manager.yaml
