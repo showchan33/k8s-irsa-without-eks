@@ -1,6 +1,6 @@
 # k8s-irsa-without-eks
 
-kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに IRSA を実現するための構成です。
+kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに IRSA を有効にするための構成を実現します。
 
 このリポジトリでは、主に以下を実施します。
 
