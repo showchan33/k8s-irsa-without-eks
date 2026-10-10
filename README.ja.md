@@ -135,7 +135,7 @@ playbookはNodeごとに次の順序で実行し、各段階の完了を検証�
 
 1. CCM DaemonSetがReadyであることを確認する。
 2. 既存のKubernetes Nodeオブジェクトを削除する。
-3. kubeletを再起動し、`spec.providerID` と `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` が設定された状態で再登録されることを確認する。
+3. kubeletを再起動し、期待する `spec.providerID` を設定して再登録されることを確認する。CCMは並行して初期化するため、`node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` はこの時点ですでに解除済みの場合がある。
 4. control plane Nodeには、CCMの配置先となる `node-role.kubernetes.io/control-plane` ラベルをKubernetes API経由で復元する。
 5. CCMがuninitialized taintを解除し、instance type / zone / regionラベルを付与することを確認する。
 

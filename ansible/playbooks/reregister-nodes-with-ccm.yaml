@@ -81,7 +81,7 @@
         name: kubelet
         state: restarted
 
-    - name: Wait for kubelet to register the expected provider ID and uninitialized taint
+    - name: Wait for kubelet to register the expected provider ID
       ansible.builtin.command:
         argv:
           - kubectl
@@ -99,14 +99,7 @@
       delay: "{{ ccm_node_wait_delay }}"
       until: >-
         reregistered_node.rc == 0 and
-        ((reregistered_node.stdout | from_json).spec.providerID | default('')) == aws_provider_id and
-        (
-          ((reregistered_node.stdout | from_json).spec.taints | default([]))
-          | selectattr('key', 'equalto', ccm_uninitialized_taint_key)
-          | selectattr('value', 'equalto', 'true')
-          | selectattr('effect', 'equalto', 'NoSchedule')
-          | list | length
-        ) > 0
+        ((reregistered_node.stdout | from_json).spec.providerID | default('')) == aws_provider_id
 
     - name: Restore the control-plane role label through the Kubernetes API
       ansible.builtin.command:
