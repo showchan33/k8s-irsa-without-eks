@@ -114,7 +114,7 @@ cp helmfiles/values/aws-cloud-controller-manager.yaml.example \
 helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
 ```
 
-CCMはcontrol planeだけに配置され、IMDSへ接続するため `hostNetwork` を使います。Kubernetes v1.36向けに、CCM imageは `v1.36.0` を指定しています。Kubernetesを更新する場合は、対応するCCM imageへ更新してください。
+CCMはcontrol planeだけに配置され、IMDSへ接続するため `hostNetwork` を使います。Kubernetes v1.36向けに、CCM imageは `v1.36.1` を指定しています。Kubernetesを更新する場合は、対応するCCM imageへ更新してください。
 
 ### 0-6. CCMの確認
 
