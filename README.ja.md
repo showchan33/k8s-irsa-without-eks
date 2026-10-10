@@ -99,18 +99,9 @@ mkdir -p ansible/files
 Ansibleは次を設定してkubeletを再起動し、API ServerがReadyになるまで待ちます。
 
 - kubelet: `--cloud-provider=external` とAWS由来の `--provider-id`
-- control planeのkubelet: 再登録後もCCMを配置できるよう、`--node-labels=node-role.kubernetes.io/control-plane=`
 - kube-controller-manager: `--cloud-provider=external`
 
 Kubernetes v1.33以降では `kube-apiserver --cloud-provider` は使えないため、kube-apiserverのmanifestは変更しません。
-
-既にexternal cloud providerなしで登録済みのNodeでは、kubeletの追加引数だけでは`spec.providerID`は遡及更新されません。初回の移行時だけ、以下でNodeを再登録してください。EC2やkubeletを削除する操作ではなく、kubeletは現在の追加引数で直ちにNodeを再作成します。
-
-```bash
-kubectl delete node <node-name>
-```
-
-新規Nodeでは、kubeletが登録時に`spec.providerID`を設定します。CCMはこれを使ってAWS情報を取得し、`node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region`などのクラウド情報を設定します。
 
 ### 0-5. CCMを導入
 
@@ -133,7 +124,7 @@ kubectl -n kube-system logs daemonset/aws-cloud-controller-manager --tail=200
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER:.spec.providerID,TYPE:.metadata.labels.node\\.kubernetes\\.io/instance-type,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,REGION:.metadata.labels.topology\\.kubernetes\\.io/region
 ```
 
-`spec.providerID`、`node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` が設定されることを完了条件とします。`spec.providerID`はkubeletがNode登録時に設定し、クラウド情報のラベルはCCMが設定します。Ansibleでクラウド情報のラベルを補完しません。
+CCM自身が `spec.providerID`、`node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` を設定することを完了条件とします。Ansibleでこれらのラベルを補完しません。
 
 ---
 

@@ -25,41 +25,17 @@
               | regex_findall('(?m)^KUBELET_EXTRA_ARGS=(.*)$')
               | last | default('')
             )
-            | regex_replace('^"|"$', '')
-            | regex_replace("^'|'$", '')
+            | regex_replace('^"(.*)"$', '\\1')
+            | regex_replace("^'(.*)'$", '\\1')
           }}
 
-    - name: Extract existing kubelet node labels
+    - name: Remove existing cloud provider arguments from kubelet extra arguments
       ansible.builtin.set_fact:
-        kubelet_node_labels_existing: >-
+        kubelet_extra_args_without_cloud_provider: >-
           {{
             kubelet_extra_args_existing
-            | regex_findall('(?:^| )--node-labels(?:=| +)([^ ]+)')
-            | first | default('')
-          }}
-
-    - name: Build managed kubelet node labels
-      ansible.builtin.set_fact:
-        kubelet_node_labels: >-
-          {{
-            (
-              kubelet_node_labels_existing.split(',')
-              + (
-                ['node-role.kubernetes.io/control-plane=']
-                if 'control_plane' in group_names else []
-              )
-            )
-            | reject('equalto', '') | unique | join(',')
-          }}
-
-    - name: Remove existing managed arguments from kubelet extra arguments
-      ansible.builtin.set_fact:
-        kubelet_extra_args_without_managed: >-
-          {{
-            kubelet_extra_args_existing
-            | regex_replace('(?:^| )--cloud-provider(?:=| +)[^ ]+', '')
-            | regex_replace('(?:^| )--provider-id(?:=| +)[^ ]+', '')
-            | regex_replace('(?:^| )--node-labels(?:=| +)[^ ]+', '')
+            | regex_replace('(^|\\s)--cloud-provider(?:=|\\s+)\\S+', '\\1')
+            | regex_replace('(^|\\s)--provider-id(?:=|\\s+)\\S+', '\\1')
             | trim
           }}
 
@@ -68,10 +44,9 @@
         kubelet_extra_args_line: >-
           KUBELET_EXTRA_ARGS="{{
           ([
-            kubelet_extra_args_without_managed,
+            kubelet_extra_args_without_cloud_provider,
             '--cloud-provider=external',
             '--provider-id=' ~ aws_provider_id,
-            '--node-labels=' ~ kubelet_node_labels if kubelet_node_labels else '',
           ] | reject('equalto', '') | join(' '))
           }}"
 
