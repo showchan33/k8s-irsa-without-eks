@@ -80,15 +80,12 @@ Terraformは次を行います。
 
 ### 0-3. AnsibleのSSH設定を準備
 
-`/home/shohei/ansible/k8s-setup` と同じ接続方式を使います。
-
 ```bash
 cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
 mkdir -p ansible/files
-ln -s /home/shohei/ansible/k8s-setup/files/sshkey ansible/files/sshkey
 ```
 
-`ansible/inventory/group_vars/all.yml` の `ansible_user` と秘密鍵パスは環境に合わせて変更してください。秘密鍵とTerraformで生成するinventoryはgit管理しません。
+`ansible/inventory/group_vars/all.yml` の `ansible_user` と `ansible_ssh_private_key_file` に、対象EC2へSSH接続できるユーザー名と秘密鍵パスを設定してください。秘密鍵はリポジトリへ追加せず、Terraformで生成するinventoryとともにgit管理しません。
 
 ### 0-4. external cloud provider設定を適用
 
