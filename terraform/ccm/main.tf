@@ -77,6 +77,7 @@ data "aws_iam_policy_document" "ccm" {
     sid    = "DescribeClusterNodes"
     effect = "Allow"
     actions = [
+      "ec2:DescribeAvailabilityZones",
       "ec2:DescribeInstances",
       "ec2:DescribeRegions",
     ]
