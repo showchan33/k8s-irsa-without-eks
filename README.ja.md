@@ -33,11 +33,12 @@ kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに I
 1. CCMを使う場合は `terraform/ccm` を apply
 2. CCMを使う場合はAnsibleでexternal cloud provider設定を適用する
 3. CCMをHelmfileで導入する
-4. `terraform/route53` を apply
-5. 残りの `helmfiles` を apply
-6. `helm-chart` を install/upgrade
-7. kube-apiserver の `issuer` / `jwks_uri` を FQDN に修正
-8. `terraform/oidc` を apply
+4. 既存NodeをCCM管理へ移行する場合は、専用Ansible playbookでNodeを再登録する
+5. `terraform/route53` を apply
+6. 残りの `helmfiles` を apply
+7. `helm-chart` を install/upgrade
+8. kube-apiserver の `issuer` / `jwks_uri` を FQDN に修正
+9. `terraform/oidc` を apply
 
 ---
 
@@ -116,7 +117,31 @@ helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
 
 CCMはcontrol planeだけに配置され、IMDSへ接続するため `hostNetwork` を使います。Kubernetes v1.36向けに、CCM imageは `v1.36.1` を指定しています。Kubernetesを更新する場合は、対応するCCM imageへ更新してください。
 
-### 0-6. CCMの確認
+### 0-6. 既存NodeをCCM管理へ移行
+
+既に存在するNodeは、external cloud providerを設定しただけではprovider IDを持ちません。CCM導入後に、次の専用playbookでNodeを再登録してください。
+
+> このplaybookはKubernetesのNodeオブジェクトを削除してkubeletを再起動します。単一Nodeクラスターでは、再登録からCCM初期化の完了までワークロードPodが一時的にPendingになります。メンテナンス時間に実行してください。
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
+    -e ccm_node_reregistration_confirm=true
+)
+```
+
+playbookはNodeごとに次の順序で実行し、各段階の完了を検証してから次のNodeへ進みます。
+
+1. CCM DaemonSetがReadyであることを確認する。
+2. 既存のKubernetes Nodeオブジェクトを削除する。
+3. kubeletを再起動し、`spec.providerID` と `node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` が設定された状態で再登録されることを確認する。
+4. control plane Nodeには、CCMの配置先となる `node-role.kubernetes.io/control-plane` ラベルをKubernetes API経由で復元する。
+5. CCMがuninitialized taintを解除し、instance type / zone / regionラベルを付与することを確認する。
+
+`--node-labels=node-role.kubernetes.io/control-plane=` をkubeletへ追加してはいけません。Kubernetes v1.36では予約済みラベル名前空間のためkubeletが起動に失敗します。
+
+### 0-7. CCMの確認
 
 ```bash
 kubectl -n kube-system rollout status daemonset/aws-cloud-controller-manager
@@ -124,7 +149,7 @@ kubectl -n kube-system logs daemonset/aws-cloud-controller-manager --tail=200
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER:.spec.providerID,TYPE:.metadata.labels.node\\.kubernetes\\.io/instance-type,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,REGION:.metadata.labels.topology\\.kubernetes\\.io/region
 ```
 
-CCM自身が `spec.providerID`、`node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` を設定することを完了条件とします。Ansibleでこれらのラベルを補完しません。
+kubeletがNode再登録時に `spec.providerID` を設定し、CCMが `node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` を設定してuninitialized taintを解除することを完了条件とします。AnsibleでAWSのクラウド情報ラベルを補完しません。
 
 ---
 

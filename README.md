@@ -28,6 +28,16 @@ cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all
 
 The Ansible playbook configures kubelet and kube-controller-manager for the external cloud provider. It deliberately does not modify kube-apiserver because current Kubernetes versions do not accept `--cloud-provider` there. See `README.ja.md` for the complete CCM setup and verification procedure.
 
+After installing CCM, migrate existing Nodes with the explicit, disruptive playbook below. It deletes each Kubernetes Node object, restarts kubelet for re-registration, restores the control-plane role label through the Kubernetes API, and waits for CCM initialization. It requires an explicit confirmation because workloads can be temporarily disrupted.
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
+    -e ccm_node_reregistration_confirm=true
+)
+```
+
 ## Reference Documents
 
 For design background and intent, see the following articles (written in Japanese):

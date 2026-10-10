@@ -1,0 +1,158 @@
+---
+- name: Verify that CCM is ready before re-registering nodes
+  hosts: control_plane
+  become: true
+  gather_facts: false
+
+  vars:
+    kubectl_kubeconfig: /etc/kubernetes/admin.conf
+    ccm_namespace: kube-system
+    ccm_daemonset_name: aws-cloud-controller-manager
+    ccm_wait_timeout: 300s
+
+  tasks:
+    - name: Wait for AWS CCM to be available
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubectl_kubeconfig }}"
+          - -n
+          - "{{ ccm_namespace }}"
+          - rollout
+          - status
+          - "daemonset/{{ ccm_daemonset_name }}"
+          - "--timeout={{ ccm_wait_timeout }}"
+      changed_when: false
+
+- name: Re-register nodes and wait for CCM initialization
+  hosts: all
+  serial: 1
+  become: true
+  gather_facts: false
+
+  vars:
+    # This play deletes Kubernetes Node objects.  Require an explicit opt-in
+    # because the node's workload Pods can become Pending during migration.
+    ccm_node_reregistration_confirm: false
+    kubectl_kubeconfig: /etc/kubernetes/admin.conf
+    kubernetes_api_host: "{{ groups['control_plane'] | first }}"
+    ccm_node_wait_retries: 60
+    ccm_node_wait_delay: 5
+    ccm_uninitialized_taint_key: node.cloudprovider.kubernetes.io/uninitialized
+
+  pre_tasks:
+    - name: Require confirmation before deleting Kubernetes Node objects
+      ansible.builtin.assert:
+        that:
+          - ccm_node_reregistration_confirm | bool
+        fail_msg: >-
+          This play deletes Kubernetes Node objects and restarts kubelet.
+          Re-run with -e ccm_node_reregistration_confirm=true after confirming
+          the workload impact.
+
+    - name: Validate required node inventory variables
+      ansible.builtin.assert:
+        that:
+          - kubernetes_node_name is defined
+          - kubernetes_node_name | length > 0
+          - aws_provider_id is defined
+          - aws_provider_id | length > 0
+        fail_msg: >-
+          kubernetes_node_name and aws_provider_id must be present in the
+          generated Ansible inventory.
+
+  tasks:
+    - name: Delete the existing Kubernetes Node object
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubectl_kubeconfig }}"
+          - delete
+          - node
+          - "{{ kubernetes_node_name }}"
+          - --ignore-not-found
+      delegate_to: "{{ kubernetes_api_host }}"
+      changed_when: true
+
+    - name: Restart kubelet to register the node again
+      ansible.builtin.systemd_service:
+        name: kubelet
+        state: restarted
+
+    - name: Wait for kubelet to register the expected provider ID and uninitialized taint
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubectl_kubeconfig }}"
+          - get
+          - node
+          - "{{ kubernetes_node_name }}"
+          - -o
+          - json
+      delegate_to: "{{ kubernetes_api_host }}"
+      register: reregistered_node
+      changed_when: false
+      retries: "{{ ccm_node_wait_retries }}"
+      delay: "{{ ccm_node_wait_delay }}"
+      until: >-
+        reregistered_node.rc == 0 and
+        ((reregistered_node.stdout | from_json).spec.providerID | default('')) == aws_provider_id and
+        (
+          ((reregistered_node.stdout | from_json).spec.taints | default([]))
+          | selectattr('key', 'equalto', ccm_uninitialized_taint_key)
+          | selectattr('value', 'equalto', 'true')
+          | selectattr('effect', 'equalto', 'NoSchedule')
+          | list | length
+        ) > 0
+
+    - name: Restore the control-plane role label through the Kubernetes API
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubectl_kubeconfig }}"
+          - label
+          - node
+          - "{{ kubernetes_node_name }}"
+          - node-role.kubernetes.io/control-plane=
+          - --overwrite
+      delegate_to: "{{ kubernetes_api_host }}"
+      when: "'control_plane' in group_names"
+
+    - name: Wait for CCM to remove the initialization taint and apply cloud labels
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - --kubeconfig
+          - "{{ kubectl_kubeconfig }}"
+          - get
+          - node
+          - "{{ kubernetes_node_name }}"
+          - -o
+          - json
+      delegate_to: "{{ kubernetes_api_host }}"
+      register: ccm_initialized_node
+      changed_when: false
+      retries: "{{ ccm_node_wait_retries }}"
+      delay: "{{ ccm_node_wait_delay }}"
+      until: >-
+        ccm_initialized_node.rc == 0 and
+        ((ccm_initialized_node.stdout | from_json).spec.providerID | default('')) == aws_provider_id and
+        (
+          ((ccm_initialized_node.stdout | from_json).spec.taints | default([]))
+          | selectattr('key', 'equalto', ccm_uninitialized_taint_key)
+          | list | length
+        ) == 0 and
+        ((ccm_initialized_node.stdout | from_json).metadata.labels['node.kubernetes.io/instance-type'] | default('') | length) > 0 and
+        ((ccm_initialized_node.stdout | from_json).metadata.labels['topology.kubernetes.io/zone'] | default('') | length) > 0 and
+        ((ccm_initialized_node.stdout | from_json).metadata.labels['topology.kubernetes.io/region'] | default('') | length) > 0
+
+    - name: Report the initialized node
+      ansible.builtin.debug:
+        msg: >-
+          {{ kubernetes_node_name }} was re-registered with {{ aws_provider_id }};
+          AWS CCM removed the uninitialized taint and applied the instance type,
+          zone, and region labels.
