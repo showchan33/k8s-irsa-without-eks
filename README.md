@@ -8,6 +8,25 @@ In this repository, you will mainly:
 - Create Route53/domain/DNS resources for a public endpoint
 - Install cert-manager, Envoy Gateway, aws-cloud-controller-manager, and amazon-eks-pod-identity-webhook
 - Create an AWS IAM OIDC Provider and IAM Roles for Kubernetes ServiceAccounts
+- Configure prerequisites for AWS Cloud Controller Manager (CCM) on an existing kubeadm Kubernetes cluster on EC2
+
+## AWS Cloud Controller Manager
+
+`terraform/ccm` discovers existing EC2 nodes from their unique `Name` tags, creates the minimal CCM Instance Profile, tags all nodes with `kubernetes.io/cluster/<cluster_id>=owned`, and generates `ansible/inventory/hosts.yaml`.
+
+```bash
+cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
+terraform -chdir=terraform/ccm init
+terraform -chdir=terraform/ccm apply
+
+cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
+(
+  cd ansible
+  ansible-playbook playbooks/configure-external-cloud-provider.yaml
+)
+```
+
+The Ansible playbook configures kubelet and kube-controller-manager for the external cloud provider. It deliberately does not modify kube-apiserver because current Kubernetes versions do not accept `--cloud-provider` there. See `README.ja.md` for the complete CCM setup and verification procedure.
 
 ## Reference Documents
 

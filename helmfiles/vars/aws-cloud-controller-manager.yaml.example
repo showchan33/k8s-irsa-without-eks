@@ -1,5 +1,7 @@
 awsCloudControllerManager:
-  version: 0.0.10
+  # Chart 0.0.12 supplies the v1.35 manifest.  The values file pins the
+  # controller image to the Kubernetes minor version used by this cluster.
+  version: 0.0.12
   namespace: kube-system
   values:
     - ../values/aws-cloud-controller-manager.yaml

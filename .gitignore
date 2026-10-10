@@ -1,0 +1,10 @@
+# Terraform local state and per-environment input
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/terraform.tfvars
+
+# Locally generated Ansible inventory and private SSH keys
+ansible/inventory/hosts.yaml
+ansible/files/*
+!ansible/files/.gitkeep

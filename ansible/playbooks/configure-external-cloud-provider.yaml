@@ -1,0 +1,42 @@
+---
+- name: Configure nodes for the external AWS cloud provider
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Configure kubelet to use the external cloud provider
+      ansible.builtin.lineinfile:
+        path: /etc/default/kubelet
+        create: true
+        mode: "0644"
+        regexp: '^KUBELET_EXTRA_ARGS='
+        line: 'KUBELET_EXTRA_ARGS="--cloud-provider=external --provider-id={{ aws_provider_id }}"'
+      notify: Restart kubelet
+
+    - name: Configure kube-controller-manager to use the external cloud provider
+      ansible.builtin.lineinfile:
+        path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+        regexp: '^\s+- --cloud-provider='
+        insertafter: '^\s+- kube-controller-manager$'
+        line: '    - --cloud-provider=external'
+      when: "'control_plane' in group_names"
+
+    - name: Flush kubelet restart before validating the control plane
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the Kubernetes API to become ready
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw=/readyz
+      register: kubernetes_api_ready
+      changed_when: false
+      retries: 30
+      delay: 5
+      until: kubernetes_api_ready.rc == 0 and kubernetes_api_ready.stdout == "ok"
+      when: "'control_plane' in group_names"
+
+  handlers:
+    - name: Restart kubelet
+      ansible.builtin.systemd_service:
+        name: kubelet
+        state: restarted
