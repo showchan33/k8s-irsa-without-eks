@@ -1,0 +1,102 @@
+---
+- name: Configure nodes for the external AWS cloud provider
+  hosts: all
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Read existing kubelet extra arguments
+      ansible.builtin.slurp:
+        path: /etc/default/kubelet
+      register: kubelet_defaults
+      failed_when: false
+
+    - name: Extract existing kubelet extra arguments
+      ansible.builtin.set_fact:
+        kubelet_extra_args_declarations: >-
+          {{
+            kubelet_defaults.content | default('') | b64decode
+            | regex_findall('(?m)^KUBELET_EXTRA_ARGS=(.*)$')
+          }}
+        kubelet_extra_args_existing: >-
+          {{
+            (
+              kubelet_defaults.content | default('') | b64decode
+              | regex_findall('(?m)^KUBELET_EXTRA_ARGS=(.*)$')
+              | last | default('')
+            )
+            | regex_replace('^"(.*)"$', '\\1')
+            | regex_replace("^'(.*)'$", '\\1')
+          }}
+
+    - name: Remove existing cloud provider arguments from kubelet extra arguments
+      ansible.builtin.set_fact:
+        kubelet_extra_args_without_cloud_provider: >-
+          {{
+            kubelet_extra_args_existing
+            | regex_replace('(^|\s)--cloud-provider(?:=|\s+)\S+', '\1')
+            | regex_replace('(^|\s)--provider-id(?:=|\s+)\S+', '\1')
+            | regex_replace('^\\1\s*', '')
+            | trim
+          }}
+
+    - name: Build managed kubelet extra arguments
+      ansible.builtin.set_fact:
+        kubelet_extra_args_line: >-
+          KUBELET_EXTRA_ARGS="{{
+          ([
+            kubelet_extra_args_without_cloud_provider,
+            '--cloud-provider=external',
+            '--provider-id=' ~ aws_provider_id,
+          ] | reject('equalto', '') | join(' '))
+          }}"
+
+    - name: Remove existing kubelet extra argument declarations
+      ansible.builtin.lineinfile:
+        path: /etc/default/kubelet
+        create: true
+        mode: "0644"
+        regexp: '^KUBELET_EXTRA_ARGS='
+        state: absent
+      when: >-
+        kubelet_extra_args_declarations | length != 1 or
+        'KUBELET_EXTRA_ARGS=' ~ kubelet_extra_args_declarations[0] != kubelet_extra_args_line
+
+    - name: Configure kubelet to use the external cloud provider
+      ansible.builtin.lineinfile:
+        path: /etc/default/kubelet
+        create: true
+        mode: "0644"
+        insertafter: EOF
+        line: "{{ kubelet_extra_args_line }}"
+      when: >-
+        kubelet_extra_args_declarations | length != 1 or
+        'KUBELET_EXTRA_ARGS=' ~ kubelet_extra_args_declarations[0] != kubelet_extra_args_line
+      notify: Restart kubelet
+
+    - name: Configure kube-controller-manager to use the external cloud provider
+      ansible.builtin.lineinfile:
+        path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+        regexp: '^\s+- --cloud-provider='
+        insertafter: '^\s+- kube-controller-manager$'
+        line: '    - --cloud-provider=external'
+      when: "'control_plane' in group_names"
+
+    - name: Flush kubelet restart before validating the control plane
+      ansible.builtin.meta: flush_handlers
+
+    - name: Wait for the Kubernetes API to become ready
+      ansible.builtin.command:
+        cmd: kubectl --kubeconfig /etc/kubernetes/admin.conf get --raw=/readyz
+      register: kubernetes_api_ready
+      changed_when: false
+      retries: 30
+      delay: 5
+      until: kubernetes_api_ready.rc == 0 and kubernetes_api_ready.stdout == "ok"
+      when: "'control_plane' in group_names"
+
+  handlers:
+    - name: Restart kubelet
+      ansible.builtin.systemd_service:
+        name: kubelet
+        state: restarted

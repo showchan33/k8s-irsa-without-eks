@@ -6,8 +6,10 @@ In this repository, you will mainly:
 
 - Expose OIDC Discovery (`/.well-known/openid-configuration`) and JWKS (`/openid/v1/jwks`)
 - Create Route53/domain/DNS resources for a public endpoint
-- Install cert-manager, Envoy Gateway, aws-cloud-controller-manager, and amazon-eks-pod-identity-webhook
+- Install cert-manager, Envoy Gateway, and amazon-eks-pod-identity-webhook
+- Install AWS Cloud Controller Manager (CCM) after completing the IRSA setup
 - Create an AWS IAM OIDC Provider and IAM Roles for Kubernetes ServiceAccounts
+- Configure prerequisites for AWS Cloud Controller Manager (CCM) on an existing kubeadm Kubernetes cluster on EC2
 
 ## Reference Documents
 
@@ -21,6 +23,7 @@ For design background and intent, see the following articles (written in Japanes
 ## Prerequisites
 
 - Terraform is available.
+- Ansible is available.
 - You can access the target Kubernetes cluster with `kubectl` (target context selected in advance).
 - The EC2 instance running the Kubernetes cluster has an Elastic IP (EIP).
 - Port `443/TCP` is available.
@@ -29,10 +32,11 @@ For design background and intent, see the following articles (written in Japanes
 ## Overall Execution Order
 
 1. Apply `terraform/route53`
-2. Apply `helmfiles`
+2. Apply cert-manager, Envoy Gateway, and amazon-eks-pod-identity-webhook with Helmfile
 3. Install/upgrade `helm-chart`
 4. Update kube-apiserver `issuer` / `jwks_uri` to the public FQDN
 5. Apply `terraform/oidc`
+6. Install AWS Cloud Controller Manager (CCM) last
 
 ---
 
@@ -80,7 +84,6 @@ Installs required components in the Kubernetes cluster:
 - cert-manager
 - Envoy Gateway
 - amazon-eks-pod-identity-webhook
-- aws-cloud-controller-manager
 
 ### 2-1. Prepare vars files
 
@@ -89,14 +92,15 @@ Copy from example/sample files as needed and edit values.
 ```bash
 cp helmfiles/vars/cert-manager.yaml.example helmfiles/vars/cert-manager.yaml
 cp helmfiles/vars/envoy-gateway.yaml.sample helmfiles/vars/envoy-gateway.yaml
-cp helmfiles/vars/aws-cloud-controller-manager.yaml.example helmfiles/vars/aws-cloud-controller-manager.yaml
 cp helmfiles/vars/amazon-eks-pod-identity-webhook.yaml.example helmfiles/vars/amazon-eks-pod-identity-webhook.yaml
 ```
 
-### 2-2. Apply all four releases
+### 2-2. Apply all three releases
 
 ```bash
-helmfile -f helmfiles/helmfile.yaml apply
+for release in cert-manager eg amazon-eks-pod-identity-webhook; do
+  helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
+done
 ```
 
 ### 2-3. Apply only one release (recommended)
@@ -110,7 +114,6 @@ helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
 
 - `cert-manager`
 - `eg`
-- `aws-cloud-controller-manager`
 - `amazon-eks-pod-identity-webhook`
 
 ### 2-4. Apply only one release (direct release file)
@@ -128,7 +131,6 @@ helmfile \
 - `cert-manager`
 - `envoy-gateway`
 - `amazon-eks-pod-identity-webhook`
-- `aws-cloud-controller-manager`
 
 ---
 
@@ -229,6 +231,42 @@ terraform -chdir=terraform/oidc apply
 
 ```bash
 terraform -chdir=terraform/oidc output
+```
+
+---
+
+## 6. AWS Cloud Controller Manager
+
+`terraform/ccm` discovers existing EC2 nodes from their unique `Name` tags, creates the minimal CCM Instance Profile, tags all nodes with `kubernetes.io/cluster/<cluster_id>=owned`, and generates `ansible/inventory/hosts.yaml`.
+
+```bash
+cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
+terraform -chdir=terraform/ccm init
+terraform -chdir=terraform/ccm apply
+
+cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
+(
+  cd ansible
+  ansible-playbook playbooks/configure-external-cloud-provider.yaml
+)
+```
+
+The Ansible playbook configures kubelet and kube-controller-manager for the external cloud provider. It deliberately does not modify kube-apiserver because current Kubernetes versions do not accept `--cloud-provider` there.
+
+Install CCM, then re-register existing Nodes:
+
+```bash
+helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
+```
+
+After installing CCM, migrate existing Nodes with the explicit, disruptive playbook below. It deletes each Kubernetes Node object, restarts kubelet for re-registration, restores the control-plane role label through the Kubernetes API, and waits for CCM initialization. It requires an explicit confirmation because workloads can be temporarily disrupted.
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
+    -e ccm_node_reregistration_confirm=true
+)
 ```
 
 ---

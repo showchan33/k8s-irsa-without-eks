@@ -1,0 +1,9 @@
+aws_region = "ap-northeast-1"
+cluster_id = "my-kubeadm"
+
+nodes = {
+  control_plane_1 = {
+    ec2_name = "k8s_control_plane"
+    role     = "control_plane"
+  }
+}

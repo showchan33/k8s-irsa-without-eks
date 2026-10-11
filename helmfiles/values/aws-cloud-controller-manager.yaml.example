@@ -1,5 +1,16 @@
 # Values for aws-cloud-controller-manager Helm chart.
 hostNetworking: true
+image:
+  repository: registry.k8s.io/provider-aws/cloud-controller-manager
+  tag: v1.36.1
+nodeSelector:
+  node-role.kubernetes.io/control-plane: ""
+tolerations:
+  - key: node.cloudprovider.kubernetes.io/uninitialized
+    value: "true"
+    effect: NoSchedule
+  - key: node-role.kubernetes.io/control-plane
+    effect: NoSchedule
 args:
   - --v=2
   - --cloud-provider=aws
