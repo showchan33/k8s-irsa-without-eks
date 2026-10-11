@@ -6,37 +6,10 @@ In this repository, you will mainly:
 
 - Expose OIDC Discovery (`/.well-known/openid-configuration`) and JWKS (`/openid/v1/jwks`)
 - Create Route53/domain/DNS resources for a public endpoint
-- Install cert-manager, Envoy Gateway, aws-cloud-controller-manager, and amazon-eks-pod-identity-webhook
+- Install cert-manager, Envoy Gateway, and amazon-eks-pod-identity-webhook
+- Install AWS Cloud Controller Manager (CCM) after completing the IRSA setup
 - Create an AWS IAM OIDC Provider and IAM Roles for Kubernetes ServiceAccounts
 - Configure prerequisites for AWS Cloud Controller Manager (CCM) on an existing kubeadm Kubernetes cluster on EC2
-
-## AWS Cloud Controller Manager
-
-`terraform/ccm` discovers existing EC2 nodes from their unique `Name` tags, creates the minimal CCM Instance Profile, tags all nodes with `kubernetes.io/cluster/<cluster_id>=owned`, and generates `ansible/inventory/hosts.yaml`.
-
-```bash
-cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
-terraform -chdir=terraform/ccm init
-terraform -chdir=terraform/ccm apply
-
-cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
-(
-  cd ansible
-  ansible-playbook playbooks/configure-external-cloud-provider.yaml
-)
-```
-
-The Ansible playbook configures kubelet and kube-controller-manager for the external cloud provider. It deliberately does not modify kube-apiserver because current Kubernetes versions do not accept `--cloud-provider` there. See `README.ja.md` for the complete CCM setup and verification procedure.
-
-After installing CCM, migrate existing Nodes with the explicit, disruptive playbook below. It deletes each Kubernetes Node object, restarts kubelet for re-registration, restores the control-plane role label through the Kubernetes API, and waits for CCM initialization. It requires an explicit confirmation because workloads can be temporarily disrupted.
-
-```bash
-(
-  cd ansible
-  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
-    -e ccm_node_reregistration_confirm=true
-)
-```
 
 ## Reference Documents
 
@@ -62,7 +35,7 @@ For design background and intent, see the following articles (written in Japanes
 3. Install/upgrade `helm-chart`
 4. Update kube-apiserver `issuer` / `jwks_uri` to the public FQDN
 5. Apply `terraform/oidc`
-6. Optionally install AWS Cloud Controller Manager (CCM) last
+6. Install AWS Cloud Controller Manager (CCM) last
 
 ---
 
@@ -257,6 +230,42 @@ terraform -chdir=terraform/oidc apply
 
 ```bash
 terraform -chdir=terraform/oidc output
+```
+
+---
+
+## 6. AWS Cloud Controller Manager
+
+`terraform/ccm` discovers existing EC2 nodes from their unique `Name` tags, creates the minimal CCM Instance Profile, tags all nodes with `kubernetes.io/cluster/<cluster_id>=owned`, and generates `ansible/inventory/hosts.yaml`.
+
+```bash
+cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
+terraform -chdir=terraform/ccm init
+terraform -chdir=terraform/ccm apply
+
+cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
+(
+  cd ansible
+  ansible-playbook playbooks/configure-external-cloud-provider.yaml
+)
+```
+
+The Ansible playbook configures kubelet and kube-controller-manager for the external cloud provider. It deliberately does not modify kube-apiserver because current Kubernetes versions do not accept `--cloud-provider` there.
+
+Install CCM, then re-register existing Nodes:
+
+```bash
+helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
+```
+
+After installing CCM, migrate existing Nodes with the explicit, disruptive playbook below. It deletes each Kubernetes Node object, restarts kubelet for re-registration, restores the control-plane role label through the Kubernetes API, and waits for CCM initialization. It requires an explicit confirmation because workloads can be temporarily disrupted.
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
+    -e ccm_node_reregistration_confirm=true
+)
 ```
 
 ---
