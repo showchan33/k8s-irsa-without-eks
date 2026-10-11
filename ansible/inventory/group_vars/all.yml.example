@@ -1,3 +1,2 @@
-# Keep the same SSH connection settings as /home/shohei/ansible/k8s-setup.
 ansible_user: ubuntu
 ansible_ssh_private_key_file: ./files/sshkey
