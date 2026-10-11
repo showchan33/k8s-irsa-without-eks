@@ -34,8 +34,9 @@
         kubelet_extra_args_without_cloud_provider: >-
           {{
             kubelet_extra_args_existing
-            | regex_replace('(^|\\s)--cloud-provider(?:=|\\s+)\\S+', '\\1')
-            | regex_replace('(^|\\s)--provider-id(?:=|\\s+)\\S+', '\\1')
+            | regex_replace('(^|\s)--cloud-provider(?:=|\s+)\S+', '\1')
+            | regex_replace('(^|\s)--provider-id(?:=|\s+)\S+', '\1')
+            | regex_replace('^\\1\s*', '')
             | trim
           }}
 
