@@ -30,15 +30,12 @@ kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに I
 
 ## 全体の実行順
 
-1. CCMを使う場合は `terraform/ccm` を apply
-2. CCMを使う場合はAnsibleでexternal cloud provider設定を適用する
-3. CCMをHelmfileで導入する
-4. 既存NodeをCCM管理へ移行する場合は、専用Ansible playbookでNodeを再登録する
-5. `terraform/route53` を apply
-6. 残りの `helmfiles` を apply
-7. `helm-chart` を install/upgrade
-8. kube-apiserver の `issuer` / `jwks_uri` を FQDN に修正
-9. `terraform/oidc` を apply
+1. `terraform/route53` を apply
+2. cert-manager、Envoy Gateway、amazon-eks-pod-identity-webhook を Helmfile で導入する
+3. `helm-chart` を install/upgrade
+4. kube-apiserver の `issuer` / `jwks_uri` を FQDN に修正
+5. `terraform/oidc` を apply
+6. 必要に応じて、最後に AWS Cloud Controller Manager（CCM）を導入する
 
 ---
 
@@ -197,7 +194,6 @@ Kubernetes クラスターに必要なコンポーネントを導入します。
 - cert-manager
 - Envoy Gateway
 - amazon-eks-pod-identity-webhook
-- aws-cloud-controller-manager
 
 ### 2-1. vars ファイルを準備
 
@@ -206,14 +202,15 @@ Kubernetes クラスターに必要なコンポーネントを導入します。
 ```bash
 cp helmfiles/vars/cert-manager.yaml.example helmfiles/vars/cert-manager.yaml
 cp helmfiles/vars/envoy-gateway.yaml.sample helmfiles/vars/envoy-gateway.yaml
-cp helmfiles/vars/aws-cloud-controller-manager.yaml.example helmfiles/vars/aws-cloud-controller-manager.yaml
 cp helmfiles/vars/amazon-eks-pod-identity-webhook.yaml.example helmfiles/vars/amazon-eks-pod-identity-webhook.yaml
 ```
 
-### 2-2. 4つすべて適用
+### 2-2. 3つすべて適用
 
 ```bash
-helmfile -f helmfiles/helmfile.yaml apply
+for release in cert-manager eg amazon-eks-pod-identity-webhook; do
+  helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
+done
 ```
 
 ### 2-3. 1つだけ適用（推奨）
@@ -227,7 +224,6 @@ helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
 
 - `cert-manager`
 - `eg`
-- `aws-cloud-controller-manager`
 - `amazon-eks-pod-identity-webhook`
 
 ### 2-4. 1つだけ適用（個別ファイル指定）
@@ -245,7 +241,6 @@ helmfile \
 - `cert-manager`
 - `envoy-gateway`
 - `amazon-eks-pod-identity-webhook`
-- `aws-cloud-controller-manager`
 
 ---
 

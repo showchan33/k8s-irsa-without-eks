@@ -58,10 +58,11 @@ For design background and intent, see the following articles (written in Japanes
 ## Overall Execution Order
 
 1. Apply `terraform/route53`
-2. Apply `helmfiles`
+2. Apply cert-manager, Envoy Gateway, and amazon-eks-pod-identity-webhook with Helmfile
 3. Install/upgrade `helm-chart`
 4. Update kube-apiserver `issuer` / `jwks_uri` to the public FQDN
 5. Apply `terraform/oidc`
+6. Optionally install AWS Cloud Controller Manager (CCM) last
 
 ---
 
@@ -109,7 +110,6 @@ Installs required components in the Kubernetes cluster:
 - cert-manager
 - Envoy Gateway
 - amazon-eks-pod-identity-webhook
-- aws-cloud-controller-manager
 
 ### 2-1. Prepare vars files
 
@@ -118,14 +118,15 @@ Copy from example/sample files as needed and edit values.
 ```bash
 cp helmfiles/vars/cert-manager.yaml.example helmfiles/vars/cert-manager.yaml
 cp helmfiles/vars/envoy-gateway.yaml.sample helmfiles/vars/envoy-gateway.yaml
-cp helmfiles/vars/aws-cloud-controller-manager.yaml.example helmfiles/vars/aws-cloud-controller-manager.yaml
 cp helmfiles/vars/amazon-eks-pod-identity-webhook.yaml.example helmfiles/vars/amazon-eks-pod-identity-webhook.yaml
 ```
 
-### 2-2. Apply all four releases
+### 2-2. Apply all three releases
 
 ```bash
-helmfile -f helmfiles/helmfile.yaml apply
+for release in cert-manager eg amazon-eks-pod-identity-webhook; do
+  helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
+done
 ```
 
 ### 2-3. Apply only one release (recommended)
@@ -139,7 +140,6 @@ helmfile -f helmfiles/helmfile.yaml -l name="${release}" apply
 
 - `cert-manager`
 - `eg`
-- `aws-cloud-controller-manager`
 - `amazon-eks-pod-identity-webhook`
 
 ### 2-4. Apply only one release (direct release file)
@@ -157,7 +157,6 @@ helmfile \
 - `cert-manager`
 - `envoy-gateway`
 - `amazon-eks-pod-identity-webhook`
-- `aws-cloud-controller-manager`
 
 ---
 
