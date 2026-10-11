@@ -22,6 +22,7 @@ kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに I
 ## 前提条件
 
 - Terraform が使えること
+- Ansible が使えること
 - Kubernetes クラスターに `kubectl` でアクセスできること（事前に対象 context を選択）
 - Kubernetes クラスターを動かしている EC2 に EIP が付与されていること
 - 443/TCP が利用可能であること

@@ -23,6 +23,7 @@ For design background and intent, see the following articles (written in Japanes
 ## Prerequisites
 
 - Terraform is available.
+- Ansible is available.
 - You can access the target Kubernetes cluster with `kubectl` (target context selected in advance).
 - The EC2 instance running the Kubernetes cluster has an Elastic IP (EIP).
 - Port `443/TCP` is available.
