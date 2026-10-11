@@ -35,118 +35,7 @@ kubeadm 等で構築した Kubernetes クラスターで、EKS を使わずに I
 3. `helm-chart` を install/upgrade
 4. kube-apiserver の `issuer` / `jwks_uri` を FQDN に修正
 5. `terraform/oidc` を apply
-6. 必要に応じて、最後に AWS Cloud Controller Manager（CCM）を導入する
-
----
-
-## 0. AWS Cloud Controller Manager（CCM）のセットアップ
-
-この手順は、kubeadmなどで構築済みのKubernetesをEC2上で動かし、AWS CCMにNodeとEC2の対応付けおよびtopologyラベルの設定を任せるためのものです。
-
-対象Nodeは、EC2の一意な `Name` タグと役割で指定します。EC2のinstance ID、接続先IP、AZ、provider IDはTerraformが取得します。
-
-### 0-1. Terraform変数を準備
-
-```bash
-cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
-```
-
-`terraform/ccm/terraform.tfvars` の主な項目:
-
-- `cluster_id`: EC2に付与する `kubernetes.io/cluster/<cluster_id>` タグのクラスタID
-- `nodes`: EC2の `Name` タグとNodeの役割
-  - `ec2_name`: 一意なEC2 `Name` タグ
-  - `role`: `control_plane` または `worker`
-  - `kubernetes_node_name`: 必要な場合だけ指定するKubernetes Node名。未指定時はEC2 private DNSの先頭ラベルを使う
-
-### 0-2. Terraformを適用
-
-```bash
-terraform -chdir=terraform/ccm init
-terraform -chdir=terraform/ccm plan
-terraform -chdir=terraform/ccm apply
-```
-
-Terraformは次を行います。
-
-- 全Nodeへ `kubernetes.io/cluster/<cluster_id>=owned` タグを付与
-- CCM専用の最小IAM RoleとInstance Profileを作成
-- control plane NodeだけへInstance Profileを関連付け
-- `ansible/inventory/hosts.yaml` を生成
-
-既に異なるInstance ProfileがEC2に付いている場合、Terraformは置換せず失敗します。事前に既存Profileを確認してください。
-
-### 0-3. AnsibleのSSH設定を準備
-
-```bash
-cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
-mkdir -p ansible/files
-```
-
-`ansible/inventory/group_vars/all.yml` の `ansible_user` と `ansible_ssh_private_key_file` に、対象EC2へSSH接続できるユーザー名と秘密鍵パスを設定してください。秘密鍵はリポジトリへ追加せず、Terraformで生成するinventoryとともにgit管理しません。
-
-### 0-4. external cloud provider設定を適用
-
-```bash
-(
-  cd ansible
-  ansible-playbook playbooks/configure-external-cloud-provider.yaml
-)
-```
-
-Ansibleは次を設定してkubeletを再起動し、API ServerがReadyになるまで待ちます。
-
-- kubelet: `--cloud-provider=external` とAWS由来の `--provider-id`
-- kube-controller-manager: `--cloud-provider=external`
-
-Kubernetes v1.33以降では `kube-apiserver --cloud-provider` は使えないため、kube-apiserverのmanifestは変更しません。
-
-### 0-5. CCMを導入
-
-```bash
-cp helmfiles/vars/aws-cloud-controller-manager.yaml.example \
-  helmfiles/vars/aws-cloud-controller-manager.yaml
-cp helmfiles/values/aws-cloud-controller-manager.yaml.example \
-  helmfiles/values/aws-cloud-controller-manager.yaml
-
-helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
-```
-
-CCMはcontrol planeだけに配置され、IMDSへ接続するため `hostNetwork` を使います。Kubernetes v1.36向けに、CCM imageは `v1.36.1` を指定しています。Kubernetesを更新する場合は、対応するCCM imageへ更新してください。
-
-### 0-6. 既存NodeをCCM管理へ移行
-
-既に存在するNodeは、external cloud providerを設定しただけではprovider IDを持ちません。CCM導入後に、次の専用playbookでNodeを再登録してください。
-
-> このplaybookはKubernetesのNodeオブジェクトを削除してkubeletを再起動します。単一Nodeクラスターでは、再登録からCCM初期化の完了までワークロードPodが一時的にPendingになります。メンテナンス時間に実行してください。
-
-```bash
-(
-  cd ansible
-  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
-    -e ccm_node_reregistration_confirm=true
-)
-```
-
-playbookはNodeごとに次の順序で実行し、各段階の完了を検証してから次のNodeへ進みます。
-
-1. CCM DaemonSetがReadyであることを確認する。
-2. 既存のKubernetes Nodeオブジェクトを削除する。
-3. kubeletを再起動し、期待する `spec.providerID` を設定して再登録されることを確認する。CCMは並行して初期化するため、`node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` はこの時点ですでに解除済みの場合がある。
-4. control plane Nodeには、CCMの配置先となる `node-role.kubernetes.io/control-plane` ラベルをKubernetes API経由で復元する。
-5. CCMがuninitialized taintを解除し、instance type / zone / regionラベルを付与することを確認する。
-
-`--node-labels=node-role.kubernetes.io/control-plane=` をkubeletへ追加してはいけません。Kubernetes v1.36では予約済みラベル名前空間のためkubeletが起動に失敗します。
-
-### 0-7. CCMの確認
-
-```bash
-kubectl -n kube-system rollout status daemonset/aws-cloud-controller-manager
-kubectl -n kube-system logs daemonset/aws-cloud-controller-manager --tail=200
-kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER:.spec.providerID,TYPE:.metadata.labels.node\\.kubernetes\\.io/instance-type,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,REGION:.metadata.labels.topology\\.kubernetes\\.io/region
-```
-
-kubeletがNode再登録時に `spec.providerID` を設定し、CCMが `node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` を設定してuninitialized taintを解除することを完了条件とします。AnsibleでAWSのクラウド情報ラベルを補完しません。
+6. 最後に AWS Cloud Controller Manager（CCM）を導入する
 
 ---
 
@@ -342,6 +231,117 @@ terraform -chdir=terraform/oidc apply
 ```bash
 terraform -chdir=terraform/oidc output
 ```
+
+---
+
+## 6. AWS Cloud Controller Manager（CCM）のセットアップ
+
+この手順は、kubeadmなどで構築済みのKubernetesをEC2上で動かし、AWS CCMにNodeとEC2の対応付けおよびtopologyラベルの設定を任せるためのものです。
+
+対象Nodeは、EC2の一意な `Name` タグと役割で指定します。EC2のinstance ID、接続先IP、AZ、provider IDはTerraformが取得します。
+
+### 6-1. Terraform変数を準備
+
+```bash
+cp terraform/ccm/terraform.tfvars.sample terraform/ccm/terraform.tfvars
+```
+
+`terraform/ccm/terraform.tfvars` の主な項目:
+
+- `cluster_id`: EC2に付与する `kubernetes.io/cluster/<cluster_id>` タグのクラスタID
+- `nodes`: EC2の `Name` タグとNodeの役割
+  - `ec2_name`: 一意なEC2 `Name` タグ
+  - `role`: `control_plane` または `worker`
+  - `kubernetes_node_name`: 必要な場合だけ指定するKubernetes Node名。未指定時はEC2 private DNSの先頭ラベルを使う
+
+### 6-2. Terraformを適用
+
+```bash
+terraform -chdir=terraform/ccm init
+terraform -chdir=terraform/ccm plan
+terraform -chdir=terraform/ccm apply
+```
+
+Terraformは次を行います。
+
+- 全Nodeへ `kubernetes.io/cluster/<cluster_id>=owned` タグを付与
+- CCM専用の最小IAM RoleとInstance Profileを作成
+- control plane NodeだけへInstance Profileを関連付け
+- `ansible/inventory/hosts.yaml` を生成
+
+既に異なるInstance ProfileがEC2に付いている場合、Terraformは置換せず失敗します。事前に既存Profileを確認してください。
+
+### 6-3. AnsibleのSSH設定を準備
+
+```bash
+cp ansible/inventory/group_vars/all.yml.example ansible/inventory/group_vars/all.yml
+mkdir -p ansible/files
+```
+
+`ansible/inventory/group_vars/all.yml` の `ansible_user` と `ansible_ssh_private_key_file` に、対象EC2へSSH接続できるユーザー名と秘密鍵パスを設定してください。秘密鍵はリポジトリへ追加せず、Terraformで生成するinventoryとともにgit管理しません。
+
+### 6-4. external cloud provider設定を適用
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/configure-external-cloud-provider.yaml
+)
+```
+
+Ansibleは次を設定してkubeletを再起動し、API ServerがReadyになるまで待ちます。
+
+- kubelet: `--cloud-provider=external` とAWS由来の `--provider-id`
+- kube-controller-manager: `--cloud-provider=external`
+
+Kubernetes v1.33以降では `kube-apiserver --cloud-provider` は使えないため、kube-apiserverのmanifestは変更しません。
+
+### 6-5. CCMを導入
+
+```bash
+cp helmfiles/vars/aws-cloud-controller-manager.yaml.example \
+  helmfiles/vars/aws-cloud-controller-manager.yaml
+cp helmfiles/values/aws-cloud-controller-manager.yaml.example \
+  helmfiles/values/aws-cloud-controller-manager.yaml
+
+helmfile -f helmfiles/helmfile.yaml -l name=aws-cloud-controller-manager apply
+```
+
+CCMはcontrol planeだけに配置され、IMDSへ接続するため `hostNetwork` を使います。Kubernetes v1.36向けに、CCM imageは `v1.36.1` を指定しています。Kubernetesを更新する場合は、対応するCCM imageへ更新してください。
+
+### 6-6. 既存NodeをCCM管理へ移行
+
+既に存在するNodeは、external cloud providerを設定しただけではprovider IDを持ちません。CCM導入後に、次の専用playbookでNodeを再登録してください。
+
+> このplaybookはKubernetesのNodeオブジェクトを削除してkubeletを再起動します。単一Nodeクラスターでは、再登録からCCM初期化の完了までワークロードPodが一時的にPendingになります。メンテナンス時間に実行してください。
+
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/reregister-nodes-with-ccm.yaml \
+    -e ccm_node_reregistration_confirm=true
+)
+```
+
+playbookはNodeごとに次の順序で実行し、各段階の完了を検証してから次のNodeへ進みます。
+
+1. CCM DaemonSetがReadyであることを確認する。
+2. 既存のKubernetes Nodeオブジェクトを削除する。
+3. kubeletを再起動し、期待する `spec.providerID` を設定して再登録されることを確認する。CCMは並行して初期化するため、`node.cloudprovider.kubernetes.io/uninitialized=true:NoSchedule` はこの時点ですでに解除済みの場合がある。
+4. control plane Nodeには、CCMの配置先となる `node-role.kubernetes.io/control-plane` ラベルをKubernetes API経由で復元する。
+5. CCMがuninitialized taintを解除し、instance type / zone / regionラベルを付与することを確認する。
+
+`--node-labels=node-role.kubernetes.io/control-plane=` をkubeletへ追加してはいけません。Kubernetes v1.36では予約済みラベル名前空間のためkubeletが起動に失敗します。
+
+### 6-7. CCMの確認
+
+```bash
+kubectl -n kube-system rollout status daemonset/aws-cloud-controller-manager
+kubectl -n kube-system logs daemonset/aws-cloud-controller-manager --tail=200
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PROVIDER:.spec.providerID,TYPE:.metadata.labels.node\\.kubernetes\\.io/instance-type,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,REGION:.metadata.labels.topology\\.kubernetes\\.io/region
+```
+
+kubeletがNode再登録時に `spec.providerID` を設定し、CCMが `node.kubernetes.io/instance-type`、`topology.kubernetes.io/zone`、`topology.kubernetes.io/region` を設定してuninitialized taintを解除することを完了条件とします。AnsibleでAWSのクラウド情報ラベルを補完しません。
 
 ---
 
