@@ -6,5 +6,6 @@
 
 # Locally generated Ansible inventory and private SSH keys
 ansible/inventory/hosts.yaml
+ansible/inventory/group_vars/control_plane/oidc_issuer.yml
 ansible/files/*
 !ansible/files/.gitkeep

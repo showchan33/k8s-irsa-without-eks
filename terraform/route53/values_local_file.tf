@@ -1,5 +1,6 @@
 locals {
-  values_local_output_path = "${path.module}/../../helm-chart/values.generated.yaml"
+  values_local_output_path             = "${path.module}/../../helm-chart/values.generated.yaml"
+  ansible_oidc_issuer_vars_output_path = "${path.module}/../../ansible/inventory/group_vars/control_plane/oidc_issuer.yml"
 }
 
 resource "local_file" "helm_chart_values_local" {
@@ -12,5 +13,13 @@ resource "local_file" "helm_chart_values_local" {
     access_key_id         = aws_iam_access_key.this.id
     secret_access_key     = aws_iam_access_key.this.secret
     route53_a_record_name = var.route53_a_record_name
+  })
+}
+
+resource "local_file" "ansible_oidc_issuer_vars" {
+  filename        = local.ansible_oidc_issuer_vars_output_path
+  file_permission = "0644"
+  content = yamlencode({
+    oidc_issuer_url = "https://${var.route53_a_record_name}"
   })
 }

@@ -160,17 +160,18 @@ helm upgrade k8s-irsa-without-eks ./helm-chart \
 
 外部サービス（AWS STS）が OIDC メタデータを解釈できるよう、kube-apiserver が返す `issuer` と `jwks_uri` のホスト名を公開 FQDN に合わせます。
 
-### 4-1. 変更内容
+### 4-1. Ansibleで変更する
 
-kube-apiserverが起動しているノードにおいて、 `/etc/kubernetes/manifests/kube-apiserver.yaml` の `command` にある以下を修正します。
+Route53 Terraformの `route53_a_record_name` を issuer URL として使います。playbookは既存の `--service-account-issuer` を公開issuerに置き換えます。
 
-```diff
-- --service-account-issuer=https://kubernetes.default.svc.cluster.local
-+ --service-account-issuer=https://[FQDN名]
-+ --service-account-jwks-uri=https://[FQDN名]/openid/v1/jwks
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/configure-service-account-issuer.yaml
+)
 ```
 
-変更後、kube-apiserver が再起動して Ready になるまで待ってください。
+`terraform/route53 apply` は `route53_a_record_name` から `ansible/inventory/group_vars/control_plane/oidc_issuer.yml` を生成します。playbookはこの変数ファイルを自動的に読み込みます。playbookはcontrol planeの `/etc/kubernetes/manifests/kube-apiserver.yaml` を更新します。static Podとしてkube-apiserverが再作成され、API ServerがReadyに復帰するまで待機します。
 
 #### 注意点
 

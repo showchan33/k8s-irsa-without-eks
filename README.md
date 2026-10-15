@@ -160,17 +160,18 @@ helm upgrade k8s-irsa-without-eks ./helm-chart \
 
 To make external services (AWS STS) interpret OIDC metadata correctly, update kube-apiserver to return the public FQDN in `issuer` and `jwks_uri`.
 
-### 4-1. Required change
+### 4-1. Apply the change with Ansible
 
-On the node running kube-apiserver, update the following options in `/etc/kubernetes/manifests/kube-apiserver.yaml`:
+Use the `route53_a_record_name` from the Route53 Terraform configuration as the issuer URL. The playbook replaces existing `--service-account-issuer` values with the public issuer.
 
-```diff
-- --service-account-issuer=https://kubernetes.default.svc.cluster.local
-+ --service-account-issuer=https://[YOUR_FQDN]
-+ --service-account-jwks-uri=https://[YOUR_FQDN]/openid/v1/jwks
+```bash
+(
+  cd ansible
+  ansible-playbook playbooks/configure-service-account-issuer.yaml
+)
 ```
 
-After the change, wait for kube-apiserver to restart and become Ready.
+`terraform/route53 apply` generates `ansible/inventory/group_vars/control_plane/oidc_issuer.yml` from `route53_a_record_name`. The playbook loads this variable file automatically. It updates `/etc/kubernetes/manifests/kube-apiserver.yaml` on each control-plane node, then waits for the static Pod to recreate kube-apiserver and for the API server to become Ready.
 
 #### Notes
 
